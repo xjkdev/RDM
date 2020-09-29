@@ -6,6 +6,7 @@
 	NSMenu* statusMenu;
 	NSStatusItem* statusItem;
 	NSMutableDictionary* refreshState;
+	NSMutableDictionary* displaySettings;
 	NSMutableSet* displayListState;
 	NSLock* displayListStateLock;
 	NSUserDefaults *userDefaults;

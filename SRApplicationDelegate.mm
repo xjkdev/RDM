@@ -97,6 +97,10 @@
 				{
 					mainItem = item;
 					[item setState: NSControlStateValueOn];
+
+					NSString* key =  [NSString stringWithFormat: @"%d", display];
+					[displaySettings setObject: @[[NSNumber numberWithInt: modes[j].derived.width],
+					 [NSNumber numberWithInt: modes[j].derived.height]] forKey: key];
 				}
 				[displayMenuItems addObject: item];
 				[item release];
@@ -250,6 +254,7 @@
 	int modeNum = [item modeNum];
 
 	SetDisplayModeNum(display, modeNum);
+	NSLog(@"set mode %d %d", display, modeNum);
 	/*
 
 	CGDisplayConfigRef config;
@@ -281,7 +286,7 @@
 	userDefaults = [[NSUserDefaults alloc] init];
 	NSDictionary *savedRefreshState = [userDefaults dictionaryForKey: @"refreshState"];
 	refreshState = [[NSMutableDictionary alloc] initWithDictionary: savedRefreshState copyItems: YES];
-
+	displaySettings = [[NSMutableDictionary alloc] init];
 	displayListState = [[NSMutableSet alloc] init];
 	displayListStateLock = [[NSLock alloc] init];
 
@@ -310,6 +315,7 @@
 		if(count++ >= 10) {
 			[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
 			count = 0;
+			// NSLog(@"fresh menu");
 		}
 		uint32_t nDisplays;
 		CGDirectDisplayID displays[0x10];
@@ -339,8 +345,13 @@
 				continue;
 			}else{
 				NSLog(@"Display %@ need to refresh", key);
-				int currentModeNum;
+				int currentModeNum=0;
+				[NSThread sleepForTimeInterval:3.0f];
 				CGSGetCurrentDisplayMode(display, &currentModeNum);
+
+
+				int width = [displaySettings[key][0] intValue];
+				int height =  [displaySettings[key][1] intValue];
 				// get all modes;
 				int nModes;
 				modes_D4* modes;
@@ -351,27 +362,26 @@
 				int adaptedModeNum = -1;
 
 				for(int j = 0; j <nModes; j++){
-					if(j == currentModeNum) continue;
 					modes_D4* mode = &modes[j];
-					if(mode->derived.width == current_mode->derived.width && mode->derived.height == current_mode->derived.height
-					&& mode->derived.density!=2.0f) {
-						adaptedModeNum = mode->derived.mode;
+					if(mode->derived.width == width && mode->derived.height == height
+					&& mode->derived.density == 2.0f && j != currentModeNum) {
+
+						NSLog(@"Display modes changed %d %d", currentModeNum, mode->derived.mode);
+						currentModeNum = mode->derived.mode;
+						break;
 					}
 				}
-				if(adaptedModeNum != -1) {
-					SetDisplayModeNum(display, adaptedModeNum);
-					int tmp1;
-					// sleep
-					do {
-						[NSThread sleepForTimeInterval:0.5f];
-						CGSGetCurrentDisplayMode(display, &tmp1);
-					}
-					while(tmp1);
-					SetDisplayModeNum(display, currentModeNum);
-				}
+
+				SetDisplayModeNum(display, currentModeNum);
+				NSLog(@"Display %@ set to current", key);
+				[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
+
+				[NSThread sleepForTimeInterval:3.0f];
+				SetDisplayModeNum(display, currentModeNum);
+				[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
+
 			}
 		}
-		[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
 	}
 }
 
