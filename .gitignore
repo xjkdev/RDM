@@ -1,0 +1,4 @@
+*.o
+RDM.app/
+SetResX
+.vscode/

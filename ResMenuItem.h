@@ -10,11 +10,11 @@ static inline CFDictionaryRef CGDisplayModeGetDictionary(CGDisplayModeRef mode) 
 @interface ResMenuItem : NSMenuItem
 {
 	CGDirectDisplayID _display;
-	
+
 	int modeNum;
-	
+
 	//CGDisplayModeRef _mode;
-	
+
 	float refreshRate;
 	float scale;
 	int colorDepth;

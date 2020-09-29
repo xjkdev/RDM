@@ -5,6 +5,7 @@
 {
 	NSMenu* statusMenu;
 	NSStatusItem* statusItem;
+	NSMutableDictionary* refreshState;
 }
 
 @end
