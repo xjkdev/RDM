@@ -2,6 +2,7 @@
 
 #import <Foundation/Foundation.h>
 #import <AppKit/AppKit.h>
+#include <math.h>
 
 #import "SRApplicationDelegate.h"
 
@@ -40,6 +41,15 @@
 	uint32_t nDisplays;
 	CGDirectDisplayID displays[0x10];
 	CGGetOnlineDisplayList(0x10, displays, &nDisplays);
+	if([displayListStateLock tryLock]) {
+		[displayListState removeAllObjects];
+		for(int i=0; i<nDisplays; i++)
+		{
+			CGDirectDisplayID display = displays[i];
+			[displayListState addObject: [NSNumber numberWithUnsignedInt: display]];
+		}
+		[displayListStateLock unlock];
+	}
 
 	for(int i=0; i<nDisplays; i++)
 	{
@@ -56,7 +66,7 @@
 			NSString* title = @"Refresh When Change";
 			item = [[RefreshMenuItem alloc] initWithDisplay: display];
 			NSString* key =  [NSString stringWithFormat: @"%d", display];
-			NSLog(@"display %@ %d", key, refreshState[key] && [refreshState[key] boolValue]);
+			// NSLog(@"display %@ %d", key, refreshState[key] && [refreshState[key] boolValue]);
 			if(refreshState[key] && [refreshState[key] boolValue]) {
 				[item setState: NSControlStateValueOn];
 
@@ -254,14 +264,13 @@
 {
 	CGDirectDisplayID display = [item display];
 	NSString *key = [NSString stringWithFormat: @"%d", display];
-	NSLog(@"? %@ %d", key, refreshState[key]);
+	// NSLog(@"? %@ %d", key, refreshState[key]);
 	if(refreshState[key] && [refreshState[key] boolValue]) {
 		[refreshState setValue: [NSNumber numberWithBool: NO] forKey: key];
 	}else {
 		[refreshState setValue: [NSNumber numberWithBool: YES] forKey: key];
-
 	}
-
+	[userDefaults setObject: refreshState forKey:@"refreshState"];
 	[self refreshStatusMenu];
 }
 
@@ -269,20 +278,101 @@
 {
 //	NSLog(@"Finished launching");
 	statusItem = [[[NSStatusBar systemStatusBar] statusItemWithLength: NSSquareStatusItemLength] retain];
-	refreshState = [[NSMutableDictionary alloc] init];
+	userDefaults = [[NSUserDefaults alloc] init];
+	NSDictionary *savedRefreshState = [userDefaults dictionaryForKey: @"refreshState"];
+	refreshState = [[NSMutableDictionary alloc] initWithDictionary: savedRefreshState copyItems: YES];
+
+	displayListState = [[NSMutableSet alloc] init];
+	displayListStateLock = [[NSLock alloc] init];
+
 	NSImage* statusImage = [NSImage imageNamed: @"StatusIcon"];
 	[statusItem setImage: statusImage];
 	[statusItem setHighlightMode: YES];
 
-  BOOL supportsDarkMenu = !(floor(NSAppKitVersionNumber) < 1343);  // NSAppKitVersionNumber10_10
-  if (supportsDarkMenu) {
-    [[statusItem image] setTemplate:YES];
-  }
+	BOOL supportsDarkMenu = !(floor(NSAppKitVersionNumber) < 1343);  // NSAppKitVersionNumber10_10
+	if (supportsDarkMenu) {
+		[[statusItem image] setTemplate:YES];
+	}
 
 	[self refreshStatusMenu];
-
+	// [NSThread detachNewThreadSelector:@selector(displayChangeWatcher:) toTarget:self withObject:nil];
+	NSThread* myThread = [[NSThread alloc] initWithTarget:self
+			selector:@selector(displayChangeWatcher)
+			object:nil];
+	[myThread start]; // Actually create the thread
 }
 
+- (void) displayChangeWatcher
+{
+	int count = 0;
+	while(true) {
+		[NSThread sleepForTimeInterval:0.5f];
+		if(count++ >= 10) {
+			[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
+			count = 0;
+		}
+		uint32_t nDisplays;
+		CGDirectDisplayID displays[0x10];
+		CGGetOnlineDisplayList(0x10, displays, &nDisplays);
+		if([displayListStateLock tryLock]) {
+			NSMutableSet* tmp = [[NSMutableSet alloc] init];
+			for(int i=0;i<nDisplays;i++) {
+				[tmp addObject: [NSNumber numberWithUnsignedInt: displays[i]]];
+			}
+			if([displayListState isEqualToSet: tmp]) {
+				[displayListStateLock unlock];
+				// do nothing
+				continue;
+			}else{
+				[displayListStateLock unlock];
+			}
+		}
+		NSLog(@"Display list Changed");
 
+		for(int i=0;i<nDisplays;i++) {
+			// get current modes;
+			CGDirectDisplayID display = displays[i];
+			NSString *key = [NSString stringWithFormat: @"%d", display];
+			// if refesh not enabled continue
+			if(!(refreshState[key] && [refreshState[key] boolValue])) {
+				NSLog(@"Display %@ do not need to refresh", key);
+				continue;
+			}else{
+				NSLog(@"Display %@ need to refresh", key);
+				int currentModeNum;
+				CGSGetCurrentDisplayMode(display, &currentModeNum);
+				// get all modes;
+				int nModes;
+				modes_D4* modes;
+				CopyAllDisplayModes(display, &modes, &nModes);
+
+				modes_D4* current_mode = &modes[currentModeNum];
+
+				int adaptedModeNum = -1;
+
+				for(int j = 0; j <nModes; j++){
+					if(j == currentModeNum) continue;
+					modes_D4* mode = &modes[j];
+					if(mode->derived.width == current_mode->derived.width && mode->derived.height == current_mode->derived.height
+					&& mode->derived.density!=2.0f) {
+						adaptedModeNum = mode->derived.mode;
+					}
+				}
+				if(adaptedModeNum != -1) {
+					SetDisplayModeNum(display, adaptedModeNum);
+					int tmp1;
+					// sleep
+					do {
+						[NSThread sleepForTimeInterval:0.5f];
+						CGSGetCurrentDisplayMode(display, &tmp1);
+					}
+					while(tmp1);
+					SetDisplayModeNum(display, currentModeNum);
+				}
+			}
+		}
+		[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
+	}
+}
 
 @end
