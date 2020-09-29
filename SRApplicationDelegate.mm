@@ -99,8 +99,12 @@
 					[item setState: NSControlStateValueOn];
 
 					NSString* key =  [NSString stringWithFormat: @"%d", display];
-					[displaySettings setObject: @[[NSNumber numberWithInt: modes[j].derived.width],
-					 [NSNumber numberWithInt: modes[j].derived.height]] forKey: key];
+					[displaySettings setObject: @[
+						[NSNumber numberWithInt: modes[j].derived.width],
+					 	[NSNumber numberWithInt: modes[j].derived.height],
+						[NSNumber numberWithInt: modes[j].derived.freq],
+						[NSNumber numberWithInt: modes[j].derived.depth],
+						] forKey: key];
 				}
 				[displayMenuItems addObject: item];
 				[item release];
@@ -352,33 +356,42 @@
 
 				int width = [displaySettings[key][0] intValue];
 				int height =  [displaySettings[key][1] intValue];
+				int freshRate = [displaySettings[key][2] intValue];
+				int colorDepth = [displaySettings[key][3] intValue];
 				// get all modes;
-				int nModes;
-				modes_D4* modes;
-				CopyAllDisplayModes(display, &modes, &nModes);
 
-				modes_D4* current_mode = &modes[currentModeNum];
+				for(int k=0;k<=1;k++) {
+					int nModes;
+					modes_D4* modes;
+					bool modeNumFlag = false;
+					CopyAllDisplayModes(display, &modes, &nModes);
 
-				int adaptedModeNum = -1;
+					modes_D4* current_mode = &modes[currentModeNum];
 
-				for(int j = 0; j <nModes; j++){
-					modes_D4* mode = &modes[j];
-					if(mode->derived.width == width && mode->derived.height == height
-					&& mode->derived.density == 2.0f && j != currentModeNum) {
+					int adaptedModeNum = -1;
 
-						NSLog(@"Display modes changed %d %d", currentModeNum, mode->derived.mode);
-						currentModeNum = mode->derived.mode;
-						break;
+					for(int j = 0; j <nModes; j++){
+						modes_D4* mode = &modes[j];
+						if(mode->derived.width == width &&
+							mode->derived.height == height &&
+							mode->derived.freq == freshRate &&
+							mode->derived.density == 2.0f &&
+							mode->derived.depth == colorDepth &&
+							mode->derived.mode != currentModeNum) {
+							NSLog(@"Display modes changed %d %d", currentModeNum, mode->derived.mode);
+							currentModeNum = mode->derived.mode;
+							modeNumFlag = true;
+							break;
+						}
+					}
+					if(k==0 || modeNumFlag) {
+						SetDisplayModeNum(display, currentModeNum);
+						NSLog(@"%d: Display %@ set to current %d", k, key, currentModeNum);
+						[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
+						[NSThread sleepForTimeInterval:3.0f];
+						CGSGetCurrentDisplayMode(display, &currentModeNum);
 					}
 				}
-
-				SetDisplayModeNum(display, currentModeNum);
-				NSLog(@"Display %@ set to current", key);
-				[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
-
-				[NSThread sleepForTimeInterval:3.0f];
-				SetDisplayModeNum(display, currentModeNum);
-				[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
 
 			}
 		}
