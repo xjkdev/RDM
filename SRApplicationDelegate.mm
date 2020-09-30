@@ -65,9 +65,9 @@
 			NSMenuItem* item;
 			NSString* title = @"Refresh When Change";
 			item = [[RefreshMenuItem alloc] initWithDisplay: display];
-			NSString* key =  [NSString stringWithFormat: @"%d", display];
+			NSString* rfsKey = [self displayIdentifierKeyFor: display];
 			// NSLog(@"display %@ %d", key, refreshState[key] && [refreshState[key] boolValue]);
-			if(refreshState[key] && [refreshState[key] boolValue]) {
+			if(refreshState[rfsKey] && [refreshState[rfsKey] boolValue]) {
 				[item setState: NSControlStateValueOn];
 
 			}
@@ -269,15 +269,25 @@
 	[self refreshStatusMenu];
 }
 
+- (NSString *) displayIdentifierKeyFor: (CGDirectDisplayID) display
+{
+	uint32_t venderNum = CGDisplayVendorNumber(display);
+	uint32_t modelNum = CGDisplayModelNumber(display);
+	uint32_t serialNum = CGDisplaySerialNumber(display);
+	NSString *key = [NSString stringWithFormat: @"%d-%d-%d", venderNum, modelNum, serialNum];
+	return key;
+}
+
 - (void) setRefreshEnabled: (RefreshMenuItem*) item
 {
 	CGDirectDisplayID display = [item display];
-	NSString *key = [NSString stringWithFormat: @"%d", display];
-	// NSLog(@"? %@ %d", key, refreshState[key]);
-	if(refreshState[key] && [refreshState[key] boolValue]) {
-		[refreshState setValue: [NSNumber numberWithBool: NO] forKey: key];
+	NSString *rfsKey = [self displayIdentifierKeyFor: display];
+	NSLog(@"setRefreshEnabled %@", rfsKey);
+	// NSLog(@"? %@ %d", rfsKey, refreshState[rfsKey]);
+	if(refreshState[rfsKey] && [refreshState[rfsKey] boolValue]) {
+		[refreshState setValue: [NSNumber numberWithBool: NO] forKey: rfsKey];
 	}else {
-		[refreshState setValue: [NSNumber numberWithBool: YES] forKey: key];
+		[refreshState setValue: [NSNumber numberWithBool: YES] forKey: rfsKey];
 	}
 	[userDefaults setObject: refreshState forKey:@"refreshState"];
 	[self refreshStatusMenu];
@@ -342,13 +352,14 @@
 		for(int i=0;i<nDisplays;i++) {
 			// get current modes;
 			CGDirectDisplayID display = displays[i];
-			NSString *key = [NSString stringWithFormat: @"%d", display];
+			NSString *rfsKey = [self displayIdentifierKeyFor: display];
+			NSString *key = [NSString stringWithFormat:@"%d", display];
 			// if refesh not enabled continue
-			if(!(refreshState[key] && [refreshState[key] boolValue])) {
-				NSLog(@"Display %@ do not need to refresh", key);
+			if(!(refreshState[rfsKey] && [refreshState[rfsKey] boolValue])) {
+				NSLog(@"Display %@(%@) do not need to refresh", rfsKey, key);
 				continue;
 			}else{
-				NSLog(@"Display %@ need to refresh", key);
+				NSLog(@"Display %@(%@) need to refresh", rfsKey, key);
 				int currentModeNum=0;
 				[NSThread sleepForTimeInterval:3.0f];
 				CGSGetCurrentDisplayMode(display, &currentModeNum);
@@ -375,18 +386,24 @@
 						if(mode->derived.width == width &&
 							mode->derived.height == height &&
 							mode->derived.freq == freshRate &&
-							mode->derived.density == 2.0f &&
 							mode->derived.depth == colorDepth &&
 							mode->derived.mode != currentModeNum) {
-							NSLog(@"Display modes changed %d %d", currentModeNum, mode->derived.mode);
-							currentModeNum = mode->derived.mode;
-							modeNumFlag = true;
-							break;
+							if(mode->derived.density != 2.0f) {
+								adaptedModeNum = mode->derived.mode;
+							}else{
+								NSLog(@"Display modes changed %d %d", currentModeNum, mode->derived.mode);
+								currentModeNum = mode->derived.mode;
+								modeNumFlag = true;
+							}
 						}
+					}
+					if(k == 0 && adaptedModeNum != -1) {
+						SetDisplayModeNum(display, adaptedModeNum);
+						NSLog(@"%d: Display %@(%@) set to adapted %d", k, rfsKey, key, currentModeNum);
 					}
 					if(k==0 || modeNumFlag) {
 						SetDisplayModeNum(display, currentModeNum);
-						NSLog(@"%d: Display %@ set to current %d", k, key, currentModeNum);
+						NSLog(@"%d: Display %@(%@) set to current %d", k, rfsKey, key, currentModeNum);
 						[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
 						[NSThread sleepForTimeInterval:3.0f];
 						CGSGetCurrentDisplayMode(display, &currentModeNum);
