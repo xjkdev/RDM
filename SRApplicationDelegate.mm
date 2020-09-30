@@ -102,8 +102,9 @@
 					[displaySettings setObject: @[
 						[NSNumber numberWithInt: modes[j].derived.width],
 					 	[NSNumber numberWithInt: modes[j].derived.height],
-						[NSNumber numberWithInt: modes[j].derived.freq],
+						[NSNumber numberWithFloat: modes[j].derived.freq],
 						[NSNumber numberWithInt: modes[j].derived.depth],
+						[NSNumber numberWithFloat: modes[j].derived.density],
 						] forKey: key];
 				}
 				[displayMenuItems addObject: item];
@@ -364,14 +365,22 @@
 				[NSThread sleepForTimeInterval:3.0f];
 				CGSGetCurrentDisplayMode(display, &currentModeNum);
 
-
+				// last display settings
 				int width = [displaySettings[key][0] intValue];
 				int height =  [displaySettings[key][1] intValue];
-				int freshRate = [displaySettings[key][2] intValue];
+				float freshRate = [displaySettings[key][2] floatValue];
 				int colorDepth = [displaySettings[key][3] intValue];
-				// get all modes;
+				float scale =  [displaySettings[key][4] floatValue];
 
+				// pre-setting is not hidpi, do not need to refresh
+				if(scale != 2.0f) {
+					continue;
+				}
+
+				// set to non-hidpi the first time, and to hidpi the second time.
 				for(int k=0;k<=1;k++) {
+					// get all modes
+					// mode index may change after setting mode num.
 					int nModes;
 					modes_D4* modes;
 					bool modeNumFlag = false;
@@ -385,7 +394,7 @@
 						modes_D4* mode = &modes[j];
 						if(mode->derived.width == width &&
 							mode->derived.height == height &&
-							mode->derived.freq == freshRate &&
+							fabs(mode->derived.freq - freshRate) <= 0.1f &&
 							mode->derived.depth == colorDepth &&
 							mode->derived.mode != currentModeNum) {
 							if(mode->derived.density != 2.0f) {
@@ -399,11 +408,11 @@
 					}
 					if(k == 0 && adaptedModeNum != -1) {
 						SetDisplayModeNum(display, adaptedModeNum);
-						NSLog(@"%d: Display %@(%@) set to adapted %d", k, rfsKey, key, currentModeNum);
+						NSLog(@"%d: Display %@(%@) set to adapted config %d", k, rfsKey, key, currentModeNum);
 					}
 					if(k==0 || modeNumFlag) {
 						SetDisplayModeNum(display, currentModeNum);
-						NSLog(@"%d: Display %@(%@) set to current %d", k, rfsKey, key, currentModeNum);
+						NSLog(@"%d: Display %@(%@) set to current config %d", k, rfsKey, key, currentModeNum);
 						[self performSelectorOnMainThread: @selector(refreshStatusMenu) withObject: nil waitUntilDone: YES];
 						[NSThread sleepForTimeInterval:3.0f];
 						CGSGetCurrentDisplayMode(display, &currentModeNum);
